@@ -1,5 +1,5 @@
 //外掛模組區，請確認執行前都已經用NPM安裝完成
-var dirname = "/home/kelunyang/webui";
+var dirname = "/你的安裝目錄/webui";
 var express = require(dirname+"/node_modules/express");
 var auth = require(dirname+"/node_modules/http-auth");
 var moment = require(dirname+"/node_modules/moment");
@@ -60,17 +60,17 @@ app.get('/', async(req, res) => {
     var ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
     await consoleDebugger("用戶登入",req.user,ip);
     res.render("console", {
-        title: "邱士杰",
+        title: "未命名",
         typekit: api.typekit,
         username: req.user,
         sysname: os.userInfo().username
     });
 });
 app.get("/userlog",function(req,res) {
-    res.download('/home/kelunyang/webui/webuilog');
+    res.download('/你的安裝目錄/webuilog');
 });
 app.get("/systemstatus",function(req,res) {
-    res.download('/home/kelunyang/sysload');
+    res.download('/你的安裝目錄/sysload');
 });
 app.get("/shutdown",async(req,res) => {
     var ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
@@ -86,7 +86,7 @@ app.get("/reboot",async(req,res) => {
 });
 app.get("/resetdata",async(req,res) => {
     var ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
-    fs.truncate(dirname+'/../sysload', 0, async (err) => {
+    fs.truncate(dirname+'/sysload', 0, async (err) => {
         if (err) {
             await consoleDebugger("記錄檔歸零（寫入失敗）",req.user,ip);
             res.status(500).send("記錄檔歸零（寫入失敗）");

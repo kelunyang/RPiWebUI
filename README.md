@@ -22,6 +22,7 @@ Node.js based Raspberry pi監控器
     1. 機身溫度
     1. 網路使用量
     1. 磁碟使用率
+1. ![執行畫面](https://github.com/kelunyang/RPIWebUI/blob/master/screenshot.png)
 
 安裝步驟
 ----
@@ -49,11 +50,22 @@ Node.js based Raspberry pi監控器
     1. body-parser
     1. bcrypt
     1. bluebird
+1. 請修改server.js，把所有的「你的安裝目錄」都改成你真正的安裝目錄
+    1. 如果你想幫妳的機器取名字，請修改第63行的未命名改成你的名字
+    1. 預設port是8086，如果你不喜歡，請修改第52行
+1. 都設定完了，請在安裝資料夾"的上一層"中輸入 `node server.js` 看看有沒有錯誤
+    1. 沒有錯誤的話，請用PM2自動啟動本程式，指令如下
+    1. `pm2 startup` （初始化，全部都用預設值enter到底）
+    1. `pm2 start server.js --name "monitor"`
+    1. `pm2 save`
+    1. `sudo env PATH=$PATH:/usr/bin pm2 startup 你的帳號名稱 -u 你的帳號名稱 --hp /你的安裝目錄的上一層`
+    1. 啟動pm2 service，如果你想要知道執行紀錄，可以輸入 `pm2 status`
 1. 特別提醒，預設帳號為admin，如果你要修改，請修改webui.htpasswd，把admin改成你喜歡的帳號
 
 備註
 ----
 1. 為了節省資源，沒有設計用資料庫儲存每日機身狀態，只以純文字檔形式儲存，每日清空
+1. 省事，所以沒有開發https版本，如果你需要https（建議），可以自己簽ssl憑證之後改server.js，加入https的設定
 
 開發者&授權
 ----------
