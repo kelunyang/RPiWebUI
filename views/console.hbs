@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+	<head>
+		<title>{{ title }} 的翻牆機效能監控頁面</title>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+        <link rel="stylesheet" href="//cdn.datatables.net/1.10.19/css/jquery.dataTables.min.css">
+        {{> head}}
+        <style type="text/css">
+            button > i {
+                padding:2px;
+            }
+            article {
+                display: flex;
+                flex-wrap: wrap;
+            }
+            article > .flexitem {
+                flex: 0 0 45%;
+            }
+            article > .table {
+                flex-grow: 1;
+            }
+            article > .piechart {
+                flex-basis: 300px;
+            }
+            header {
+                display: flex;
+                justify-content: space-between;
+                font-size: 10px;
+                text-align: right;
+            }
+            header > .flexitem {
+                flex: 0 0 40%;
+                justify-content: space-between;
+            }
+            header > .flexitem > label {
+                flex:  0 0 50%;
+            }
+            nav {
+                display: flex;
+                justify-content: space-between;
+                padding: 3px;
+            }
+            nav > .flexitem {
+                flex: 0 0 40%;
+            }
+            nav > .flexitem > button {
+                flex-basis: 100px;
+                margin: 2px;
+            }
+        </style>
+    </head>
+    <body>
+        <nav>
+            <div class="flexitem">
+                <span id="userField" class="fa fa-user"></span>
+                <span id="accountname">{{ username }}</span>已登入(系統管理員帳號：{{ sysname }})
+            </div>
+            <div class="flexitem" style="display:flex;flex-wrap: wrap;justify-content:flex-end">
+                <button type="button" id="password"><i class="fas fa-key"></i>修改密碼</button>
+                <button type="button" id="shutdown"><i class="fas fa-power-off"></i>關機</button>
+                <button type="button" id="reboot"><i class="fas fa-sync"></i>重新開機</button>
+            </div>
+        </nav>
+        <header>
+            <div class="flexitem" style="text-align:left;display:flex;flex-wrap: wrap;">
+                <label>系統訊息更新倒數：<progress id="synccounter" value="0" max="100" title="每分鐘更新，如要立刻更新，請點此"></progress></label>
+                <label>清理系統訊息倒數：<progress id="wipecounter" value="0" max="100" title="累積約5700筆（1日）時清空，如須立刻清空，請點此"></progress></label>
+            </div>
+            <div class="flexitem">
+                <span style="color:#666"><i class="fab fa-chrome" aria-hidden="true"></i><i class="fab fa-edge" aria-hidden="true"></i><i class="fab fa-firefox" aria-hidden="true"></i>本頁面支援手機、電腦，但請務必使用最新版瀏覽器操作本網頁，勿用IE6</span>
+            </div>
+        </header>
+        <article>
+            <div class="flexitem">
+                <canvas id="cpustat" width="50%" height="400"></canvas>
+            </div>
+            <div class="flexitem">
+                <canvas id="memorystat" width="50%" height="400"></canvas>
+            </div>
+            <div class="flexitem">
+                <canvas id="networkstat" width="50%" height="400"></canvas>
+            </div>
+            <div class="flexitem">
+                <canvas id="tempstat" width="50%" height="400"></canvas>
+            </div>
+            <div class="flexitem piechart">
+                <canvas id="diskstat" width="400" height="400"></canvas>
+            </div>
+            <div class="flexitem table">
+                <table id="userlog" style="width:100%">
+                    <thead>
+                        <tr>
+                            <th>時間</th>
+                            <th>IP</th>
+                            <th>用戶</th>
+                            <th>系統紀錄</th>
+                        </tr>
+                    </thead>
+                </table>
+            </div>
+        </article>
+
+        {{> footer}}
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/4.5.0/papaparse.min.js"></script>
+        <script src="//cdn.datatables.net/1.10.19/js/jquery.dataTables.min.js"></script>
+        <script>
+            var charts = {
+                titles: [ "網路使用量","機身晶片溫度","記憶體使用量","CPU使用量" ],
+                objs: new Array(),
+                htmlobj: new Array()
+            }
+            charts.titles.forEach((item) => {
+                charts.objs.push({
+                    type: 'line',
+                    options: {
+                        spanGaps: true,
+                        maintainAspectRatio: false,
+                        responsive: true,
+                        elements: { point: { radius: 0 } },
+                        legend: {
+                            display: false
+                        },
+                        title:{
+                            display:true,
+                            text:item
+                        },
+                        tooltips: {
+                            mode: 'index',
+                            intersect: false,
+                        },
+                        hover: {
+                            mode: 'nearest',
+                            intersect: true
+                        },
+                        scales: {
+                            xAxes: [{
+                                type: "time",
+                                display: true,
+                                scaleLabel: {
+                                    display: true,
+                                    labelString: '時間'
+                                },
+                                time: {
+                                    displayFormats: {
+                                        'millisecond': 'HH:mm',
+                                        'second': 'HH:mm',
+                                        'minute': 'HH:mm',
+                                        'hour': 'HH:mm',
+                                        'day': 'HH:mm',
+                                        'week': 'HH:mm',
+                                        'month': 'HH:mm',
+                                        'quarter': 'HH:mm',
+                                        'year': 'HH:mm',
+                                    }
+                                }
+                            }],
+                            yAxes: [{
+                                display: true,
+                                scaleLabel: {
+                                    display: true,
+                                    labelString: 'GiB'
+                                }
+                            }]
+                        }
+                    }
+                });
+            });
+            dscconfig = {
+                type: 'pie'
+            };
+            intvervalObj = null;
+            list = null;
+            lastRefresh = Date.now();
+            headers = null;
+            username = "{{ username }}";
+            password = null;
+            $().ready(() => {
+                charts.htmlobj = [$("#networkstat"), $("#memorystat"), $("#cpustat"), $("#tempstat")]
+                var dsc = $("#diskstat");
+                window.nbc = new Chart(charts.htmlobj[0], charts.objs[0]);
+                window.msc = new Chart(charts.htmlobj[2], charts.objs[2]);
+                window.csc = new Chart(charts.htmlobj[3], charts.objs[3]);
+                window.dsc = new Chart(dsc, dscconfig);
+                window.tpc = new Chart(charts.htmlobj[1], charts.objs[1]);
+                list = $('#userlog').DataTable({
+                    info:false,
+                    paging:true,
+                    ordering:[[ 0, "desc" ]],
+                    searching:false,
+                    columnDefs: [ {
+                        "targets": 0,
+                        "data": function ( data, type, row, meta ) {
+                            return parseInt(data[0]);
+                        },
+                        "render": function ( data, type, row, meta ) {
+                            return moment.unix(row[0]).format("YYYY-MM-DD HH:mm:ss");
+                        }
+                    } ]
+                });
+                password = prompt("請再次輸入密碼");
+                if(password != null) {
+                    headers = new Headers();
+                    headers.append("Content-Type", "text/plain");
+                    headers.append('Authorization', 'Basic ' + btoa(username + ":" + password));
+                    autoupdate();
+                    $("button#shutdown").on("click", function() {
+                        fetch('/shutdown', {
+                            method: 'GET',
+                            headers: headers
+                        })
+                        .then(function(response) {
+                            if(response.ok) {
+                                return response.text();
+                            }
+                        })
+                        .then((data) => {
+                            alert("系統關機指令在"+moment.unix(data).format("YYYY-MM-DD HH:mm:ss")+"已執行，請在三分鐘之後再去拔插頭");
+                        })
+                        .catch((err) => {
+                            alert("關機指令執行失敗");
+                        });
+                    });
+                    $("button#reboot").on("click", function() {
+                        fetch('/reboot', {
+                            method: 'GET',
+                            headers: headers
+                        })
+                        .then(function(response) {
+                            if(response.ok) {
+                                return response.text();
+                            }
+                        })
+                        .then((data) => {
+                            alert("系統重啟指令在"+moment.unix(data).format("YYYY-MM-DD HH:mm:ss")+"已執行，請注意，大約三分鐘後等系統上線網頁才可能抓到新的資料");
+                        })
+                        .catch((err) => {
+                            alert("重啟指令執行失敗");
+                        });
+                    });
+                    $("button#password").on("click", function() {
+                        var newpasswd = prompt("請輸入新的密碼");
+                        if(newpasswd != null) {
+                            var newheader = new Headers();
+                            newheader.append('Accept', 'application/json');
+                            newheader.append('Content-Type', 'application/json');
+                            newheader.append('Authorization', 'Basic ' + btoa(username + ":" + password));
+                            fetch('/password', {
+                                method: 'POST',
+                                headers: newheader,
+                                body: JSON.stringify({
+                                    username: username,
+                                    password: newpasswd
+                                })
+                            })
+                            .then(function(response) {
+                                if(response.ok) {
+                                    return response.text();
+                                } else {
+                                    throw Error(response.statusText);
+                                }
+                            })
+                            .then((data) => {
+                                if(data.indexOf("fail") == -1) {
+                                    alert("密碼修改完成！"+moment.unix(data).format("YYYY-MM-DD HH:mm:ss")+"請立刻重新開機，套用新的密碼！");
+                                } else {
+                                    alert("密碼修改失敗！")
+                                }
+                            })
+                            .catch((err) => {
+                                alert("密碼修改指令失敗："+err);
+                            });
+                        }
+                    });
+                    $("progress#synccounter").on("click", () => {
+                        autoupdate();
+                    });
+                    $("progress#wipecounter").on("click", () => {
+                        var r = confirm("你確定你要將資料檔歸零嗎？");
+                        if (r == true) {
+                            fetch('/resetdata', {
+                                method: 'GET',
+                                headers: headers
+                            })
+                            .then(function(response) {
+                                if(response.ok) {
+                                    return response.text();
+                                } else {
+                                    throw Error(response.statusText);
+                                }
+                            })
+                            .then((data) => {
+                                alert("記錄檔歸零已在"+moment.unix(data).format("YYYY-MM-DD HH:mm:ss")+"執行完成，請注意，大約1分鐘後才有可能抓到新的系統資料");
+                                location.reload();
+                            })
+                            .catch((err) => {
+                                alert("記錄檔歸零執行失敗："+err);
+                            });
+                        }
+                    });
+                } else {
+                    alert("如果您沒有輸入密碼，就不能執行監控程式！");
+                }
+            })
+            function autoupdate() {
+                clearInterval(intvervalObj);
+                intvervalObj = null;
+                fetch('/systemstatus', {
+                    method: 'GET',
+                    headers: headers
+                })
+                .then(function(response) {
+                    if(response.ok) {
+                        return response.text();
+                    }
+                })
+                .then((data) => {
+                    var results = Papa.parse(data, {
+                        delimiter: "\t"
+                    });
+                    $("progress#wipecounter").val(results.data.length/5760*100);
+                    sysdata = new Array();
+                    var error = false;
+                    results.data.forEach((element) => {
+                        if(element.length > 6) {
+                            if(!/[^\d+$]/.test(element[0])) {
+                                sysdata.push({
+                                    date: moment(parseInt(element[0])*1000).toDate(),
+                                    memoryused: element[1],
+                                    memorytotal: element[2],
+                                    memorypercent: parseFloat(element[1])/parseFloat(element[2])*100,
+                                    diskused: parseFloat(element[3]),
+                                    diskremain: parseFloat(element[4]) - parseFloat(element[3]),
+                                    networkbandwith: (math.unit(element[5])).toNumber('GiB'),
+                                    temp: parseFloat(element[6]),
+                                    cpuusage: element[7]*100
+                                });
+                            } else {
+                                error = true;
+                            }
+                        }
+                    });
+                    if(error) {
+                        var r = confirm("資料發生錯誤！多半是不正常關機導致紀錄寫入錯誤，請按下確定，將記錄檔歸零");
+                        if (r == true) {
+                            $("progress#wipecounter").click();
+                        } else {
+                            alert("記錄檔每日都會歸零，如果您這次不歸零，明天也會看到正常的紀錄");
+                        }
+                    } else {
+                        charts.objs.forEach((item) => {
+                            item.data.datasets = new Array();
+                        });
+                        dscconfig.data.datasets = new Array();
+                        dscconfig.data.labels = new Array();
+                        var colorArr = randomColor({luminosity: 'dark', format: 'rgba', count:6, alpha: 1});
+                        var title = ["ADSL網路用量", "記憶體用量", "CPU用量","機身晶片溫度"];
+                        var data = new Array();
+                        data.push(new Array()); //網路流量
+                        data.push(new Array()); //記憶體用量
+                        data.push(new Array()); //CPU用量
+                        data.push(new Array()); //機身晶片溫度
+                        var dataset = new Array();
+                        sysdata.forEach((item) => {
+                            data[0].push({
+                                y: item.networkbandwith,
+                                x: item.date
+                            });
+                            data[1].push({
+                                y: item.memorypercent,
+                                x: item.date
+                            });
+                            data[2].push({
+                                y: item.cpuusage,
+                                x: item.date
+                            });
+                            data[3].push({
+                                y: item.temp,
+                                x: item.date
+                            });
+                        });
+                        for(var i=0;i<title.length;i++) {
+                            dataset.push({
+                                label: title[i],
+                                borderColor: colorArr[i],
+                                backgroundColor: colorArr[i],
+                                fill: false,
+                                data: data[i]
+                            });
+                        }
+                        charts.objs[0].data.datasets.push(dataset[0]);
+                        charts.objs[2].data.datasets.push(dataset[1]);
+                        charts.objs[3].data.datasets.push(dataset[2]);
+                        charts.objs[1].data.datasets.push(dataset[3]);
+                        if(sysdata.length > 1) {
+                            dscconfig.data.datasets.push({
+                                data: [sysdata[sysdata.length - 1].diskused, sysdata[sysdata.length - 1].diskremain],
+                                backgroundColor: [colorArr[4],colorArr[5]]
+                            });
+                            dscconfig.data.labels = ["硬碟用量(GB)","硬碟剩餘量(GB)"];
+                            window.dsc.update();
+                        }
+                        window.nbc.update();                        
+                        window.msc.update();    
+                        window.csc.update();    
+                        window.tpc.update();
+                    }
+                    fetch('/userlog', {
+                        method: 'GET',
+                        headers: headers
+                    })
+                    .then(function(response) {
+                        if(response.ok) {
+                            return response.text();
+                        }
+                    })
+                    .then((data) => {
+                        list.clear().draw();
+                        var results = Papa.parse(data, {
+                            delimiter: "\t"
+                        });
+                        userdata = new Array();
+                        results.data.forEach((element) => {
+                            if(element.length > 1) {
+                                list.row.add([
+                                    element[0],
+                                    element[2],
+                                    element[1],
+                                    element[3]
+                                ]);
+                            }
+                        });
+                        list.order( [ 0, 'desc' ] ).draw()
+                        intvervalObj = setInterval(function(e) {
+                            if(Date.now()-lastRefresh >= 60*1000) {
+                                lastRefresh = Date.now();
+                                autoupdate();
+                            } else {
+                                $("progress#synccounter").val((Date.now()-lastRefresh)/(60*1000)*100);
+                            }
+                        },1000);
+                    })
+                    .catch(function(err) {
+                        alert("下載用戶統計資料發生錯誤！");
+                    });
+                })
+                .catch(function(err) {
+                    alert("下載系統即時資訊發生錯誤！");
+                });
+            }
+        </script>
+    </body>
+</html>
